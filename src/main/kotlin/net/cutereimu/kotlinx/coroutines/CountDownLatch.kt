@@ -3,9 +3,11 @@ package net.cutereimu.kotlinx.coroutines
 import kotlinx.coroutines.sync.Semaphore
 import java.util.concurrent.atomic.AtomicLong
 
-class CountDownLatch(count: Int) {
+class CountDownLatch(count: Int = 0) {
     private val state = AtomicLong(count.toLong() shl 32)
-    private val sema = Semaphore(count, count)
+    private val sema =
+        if (count == 0) Semaphore(Int.MAX_VALUE, Int.MAX_VALUE)
+        else Semaphore(count, count)
 
     @Throws(InterruptedException::class)
     suspend fun await() {
