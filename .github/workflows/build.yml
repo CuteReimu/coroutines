@@ -37,4 +37,4 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: buildPlugin
+          arguments: build
