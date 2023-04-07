@@ -3,8 +3,8 @@ package net.cutereimu.kotlinx.coroutines
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Assertions
-import org.junit.jupiter.api.Test
+import org.junit.Assert
+import org.junit.Test
 import kotlin.random.Random
 
 class TestConcurrentHashMap {
@@ -45,12 +45,12 @@ class TestConcurrentHashMap {
                     val seen = HashMap<Long, Boolean>(mapSize.toInt())
 
                     m.forEach { (k, v) ->
-                        Assertions.assertEquals(0L, v % k)
-                        Assertions.assertFalse(seen.containsKey(k))
+                        Assert.assertEquals(0L, v % k)
+                        Assert.assertFalse(seen.containsKey(k))
                         seen[k] = true
                     }
 
-                    Assertions.assertEquals(mapSize.toInt(), seen.size)
+                    Assert.assertEquals(mapSize.toInt(), seen.size)
                 }
             } finally {
                 done.close()
@@ -69,20 +69,20 @@ class TestConcurrentHashMap {
             m.forEach { entry ->
                 m.forEach { (key, value) ->
                     val v = m.get(key)
-                    Assertions.assertNotEquals(null, v)
-                    Assertions.assertEquals(value, v)
+                    Assert.assertNotEquals(null, v)
+                    Assert.assertEquals(value, v)
                     m.getOrPut(42) { "dummy" }
                     m.put(42, "sync.Map")
                     val v2 = m.remove(42)
-                    Assertions.assertNotEquals(null, v2)
-                    Assertions.assertEquals("sync.Map", v2)
+                    Assert.assertNotEquals(null, v2)
+                    Assert.assertEquals("sync.Map", v2)
                 }
                 m.remove(entry.key)
             }
 
             var length = 0
             m.forEach { _ -> length++ }
-            Assertions.assertEquals(0, length)
+            Assert.assertEquals(0, length)
         }
     }
 }

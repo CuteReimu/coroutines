@@ -3,8 +3,8 @@ package net.cutereimu.kotlinx.coroutines
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Assertions
-import org.junit.jupiter.api.Test
+import org.junit.Assert
+import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 
 class TestCountDownLatch {
@@ -27,7 +27,7 @@ class TestCountDownLatch {
                 }
                 cd1.await()
                 (0 until n).forEach { _ ->
-                    Assertions.assertFalse(exited.tryReceive().isSuccess)
+                    Assert.assertFalse(exited.tryReceive().isSuccess)
                     cd2.countDown()
                 }
                 (0 until n).forEach { _ -> exited.receive() }
@@ -67,7 +67,7 @@ class TestCountDownLatch {
                 }
                 // Wait for goroutine 1 and 2
                 cd.await()
-                Assertions.assertEquals(2, n.get())
+                Assert.assertEquals(2, n.get())
             }
         }
     }
