@@ -144,19 +144,19 @@ class TestRateLimiter {
         runBlocking {
             val limit = 100.0
             val burst = 100
-            val numOK = AtomicInteger()
+            var numOK = 0
             val limiter = RateLimiter(limit, burst)
             val start = TimeSource.Monotonic.markNow()
             val end = start + 5.seconds
             while (TimeSource.Monotonic.markNow() < end) {
-                if (limiter.allow(t = TimeSource.Monotonic.markNow()))
-                    numOK.incrementAndGet()
+                if (limiter.allow())
+                    numOK++
                 delay(2.milliseconds)
             }
             val elapsed = start.elapsedNow()
             val ideal = burst + (elapsed * limit).toInt(DurationUnit.SECONDS)
-            Assert.assertTrue(numOK.get() <= ideal + 1)
-            Assert.assertTrue(numOK.get() >= (0.999 * ideal).toInt())
+            Assert.assertTrue(numOK <= ideal + 1)
+            Assert.assertTrue(numOK >= (0.999 * ideal).toInt())
         }
     }
 
