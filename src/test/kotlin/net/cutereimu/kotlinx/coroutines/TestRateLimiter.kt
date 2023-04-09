@@ -1,9 +1,6 @@
 package net.cutereimu.kotlinx.coroutines
 
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import net.cutereimu.kotlinx.coroutines.RateLimiter.Reservation
 import org.junit.Assert
 import org.junit.Test
@@ -124,48 +121,6 @@ class TestRateLimiter {
         }
     }
 
-    private class TestTime {
-        val mu = Mutex()
-        var cur = TimeSource.Monotonic.markNow()
-        val timers = ArrayList<TestTimer>()
-        suspend fun now() = mu.withLock { cur }
-        suspend fun newTimer(dur: Duration): Pair<Channel<ComparableTimeMark>, suspend () -> Unit> {
-            mu.withLock {
-                val timer = TestTimer(cur + dur)
-                timers.add(timer)
-                return Pair(timer.ch) {
-                    advanceToTimer()
-                    delay(dur)
-                }
-            }
-        }
-
-        suspend operator fun minus(t: ComparableTimeMark): Duration = mu.withLock { cur - t }
-
-        suspend fun advance(dur: Duration) = mu.withLock { advanceUnlocked(dur) }
-
-        suspend fun advanceUnlocked(dur: Duration) {
-            cur += dur
-            var i = 0
-            while (i < timers.size) {
-                if (timers[i].time > cur) {
-                    i++
-                } else {
-                    timers[i].ch.send(cur)
-                    timers.removeAt(i)
-                }
-            }
-        }
-
-        suspend fun advanceToTimer() = mu.withLock { advanceUnlocked(timers.minOf { it.time } - cur) }
-    }
-
-    private class TestTimer(
-        val time: ComparableTimeMark,
-    ) {
-        val ch = Channel<ComparableTimeMark>(1)
-    }
-
     @Test
     fun testSimultaneousRequests() {
         runBlocking {
@@ -190,16 +145,15 @@ class TestRateLimiter {
             val limit = 100.0
             val burst = 100
             val numOK = AtomicInteger()
-            val tt = TestTime()
             val limiter = RateLimiter(limit, burst)
-            val start = tt.now()
+            val start = TimeSource.Monotonic.markNow()
             val end = start + 5.seconds
-            while (tt.now() < end) {
-                if (limiter.allow(t = tt.now()))
+            while (TimeSource.Monotonic.markNow() < end) {
+                if (limiter.allow(t = TimeSource.Monotonic.markNow()))
                     numOK.incrementAndGet()
-                tt.advance(2.milliseconds)
+                delay(2.milliseconds)
             }
-            val elapsed = tt - start
+            val elapsed = start.elapsedNow()
             val ideal = burst + (elapsed * limit).toInt(DurationUnit.SECONDS)
             Assert.assertTrue(numOK.get() <= ideal + 1)
             Assert.assertTrue(numOK.get() >= (0.999 * ideal).toInt())
@@ -395,16 +349,16 @@ class TestRateLimiter {
         val noException: Boolean
     )
 
-    private suspend fun runWait(tt: TestTime, limiter: RateLimiter, w: Wait) {
+    private suspend fun runWait(limiter: RateLimiter, w: Wait) {
         println("testing ${w.name}")
-        val start = tt.now()
+        val start = TimeSource.Monotonic.markNow()
         try {
-            limiter.wait(w.ctx, w.n, start) { tt.newTimer(it).second }
+            limiter.wait(w.ctx, w.n, start)
             Assert.assertTrue(w.noException)
-        } catch (_: Exception) {
+        } catch (_: Exception) { // Assert.asserTrue 抛出的是Error不是Exception
             Assert.assertFalse(w.noException)
         }
-        val delay = tt - start
+        val delay = start.elapsedNow()
         Assert.assertTrue(waitDelayOk(w.delay, delay))
     }
 
@@ -419,42 +373,36 @@ class TestRateLimiter {
     @Test
     fun testWaitSimple() {
         runBlocking {
-            val tt = TestTime()
             val limiter = RateLimiter(10.0, 3)
-            runWait(tt, limiter, Wait("not-active", EmptyCoroutineContext, 1, 0, false))
-            runWait(tt, limiter, Wait("exceed-burst-error", coroutineContext, 4, 0, false))
-            runWait(tt, limiter, Wait("act-now", coroutineContext, 2, 0, true))
-            runWait(tt, limiter, Wait("act-later", coroutineContext, 3, 2, true))
+            runWait(limiter, Wait("not-active", EmptyCoroutineContext, 1, 0, false))
+            runWait(limiter, Wait("exceed-burst-error", coroutineContext, 4, 0, false))
+            runWait(limiter, Wait("act-now", coroutineContext, 2, 0, true))
+            runWait(limiter, Wait("act-later", coroutineContext, 3, 2, true))
         }
     }
 
     @Test
     fun testWaitCancel() {
         runBlocking {
-            val tt = TestTime()
             val limiter = RateLimiter(10.0, 3)
-            runWait(tt, limiter, Wait("act-now", coroutineContext, 2, 0, true))
-            coroutineScope {
-                val ch = tt.newTimer(d).first
-                val job = launch {
-                    runWait(tt, limiter, Wait("will-cancel", coroutineContext, 3, 1, false))
-                }
-                ch.receive()
-                job.cancelAndJoin()
+            runWait(limiter, Wait("act-now", coroutineContext, 2, 0, true))
+            val job = launch {
+                runWait(limiter, Wait("will-cancel", coroutineContext, 3, 1, false))
             }
+            delay(d)
+            job.cancelAndJoin()
             println("tokens:${limiter.tokens} last:${limiter.last} lastEvent:${limiter.lastEvent}")
-            runWait(tt, limiter, Wait("act-now-after-cancel", coroutineContext, 2, 0, true))
+            runWait(limiter, Wait("act-now-after-cancel", coroutineContext, 2, 0, true))
         }
     }
 
     @Test
     fun testWaitTimeout() {
         runBlocking {
-            val tt = TestTime()
             val limiter = RateLimiter(10.0, 3)
             val job = launch {
-                runWait(tt, limiter, Wait("act-now", coroutineContext, 2, 0, true))
-                runWait(tt, limiter, Wait("w-timeout-err", coroutineContext, 3, 0, false))
+                runWait(limiter, Wait("act-now", coroutineContext, 2, 0, true))
+                runWait(limiter, Wait("w-timeout-err", coroutineContext, 3, 1, false))
             }
             delay(d)
             job.cancelAndJoin()
@@ -464,9 +412,8 @@ class TestRateLimiter {
     @Test
     fun testWaitInf() {
         runBlocking {
-            val tt = TestTime()
             val limiter = RateLimiter(RateLimiter.inf, 0)
-            runWait(tt, limiter, Wait("exceed-burst-no-error", coroutineContext, 3, 0, true))
+            runWait(limiter, Wait("exceed-burst-no-error", coroutineContext, 3, 0, true))
         }
     }
 

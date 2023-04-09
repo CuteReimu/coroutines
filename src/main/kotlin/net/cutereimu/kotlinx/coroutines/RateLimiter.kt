@@ -104,7 +104,6 @@ class RateLimiter(
         ctx: CoroutineContext,
         n: Int,
         t: ComparableTimeMark,
-        newTimer: suspend (Duration) -> (suspend () -> Unit) = { { delay(it) } },
     ) {
         val (burst, limit) = mu.withLock { Pair(this.burst, this.limit) }
 
@@ -120,7 +119,7 @@ class RateLimiter(
         if (delay == Duration.ZERO)
             return
         try {
-            newTimer(delay)()
+            delay(delay)
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
                 r.cancel()
