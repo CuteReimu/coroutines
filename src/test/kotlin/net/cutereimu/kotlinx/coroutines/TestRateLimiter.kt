@@ -19,7 +19,7 @@ import kotlin.time.Duration.Companion.seconds
 class TestRateLimiter {
     @Test
     fun testEvery() {
-        fun closeEnough(a: Limit, b: Limit) = (abs(a / b) - 1.0) < 1e-9
+        fun closeEnough(a: Double, b: Double) = (abs(a / b) - 1.0) < 1e-9
         arrayOf(
             Duration.ZERO to RateLimiter.inf,
             (-1).nanoseconds to RateLimiter.inf,

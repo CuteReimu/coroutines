@@ -9,9 +9,6 @@ import kotlin.math.min
 import kotlin.time.*
 import kotlin.time.Duration.Companion.seconds
 
-/** 用来表示事件频率的限制，即每秒多少个事件。0表示不允许任何事件 */
-typealias Limit = Double
-
 /**
  * RateLimiter 用来控制事件发生的频率。它实现了一个大小为b的“令牌桶”，最初是满的，然后以每秒r个令牌的速率重新填充。
  *
@@ -31,7 +28,7 @@ typealias Limit = Double
  */
 @ExperimentalTime
 class RateLimiter(
-    private var limit: Limit = 0.0,
+    private var limit: Double = 0.0,
     private var burst: Int = 0
 ) {
     private val mu = Mutex()
@@ -46,7 +43,7 @@ class RateLimiter(
     internal var lastEvent = last
 
     /** @return 总体事件最大速率。换言之，每隔 `1/limit` 秒恢复一个令牌 */
-    suspend fun getLimit(): Limit = mu.withLock { limit }
+    suspend fun getLimit(): Double = mu.withLock { limit }
 
     /** @return 突发事件个数。即为令牌个数上限 */
     suspend fun getBurst(): Int = mu.withLock { burst }
@@ -128,7 +125,7 @@ class RateLimiter(
         }
     }
 
-    suspend fun setLimit(newLimit: Limit, at: ComparableTimeMark = TimeSource.Monotonic.markNow()) {
+    suspend fun setLimit(newLimit: Double, at: ComparableTimeMark = TimeSource.Monotonic.markNow()) {
         mu.withLock {
             val (t, _, tokens) = advance(at)
             this.last = t
@@ -200,7 +197,7 @@ class RateLimiter(
         private val limiter: RateLimiter,
         private val tokens: Int,
         internal val timeToAct: ComparableTimeMark,
-        private val limit: Limit = 0.0
+        private val limit: Double = 0.0
     ) {
         /**
          * @return 保留持有者在执行保留操作之前必须等待的持续时间。
@@ -240,7 +237,7 @@ class RateLimiter(
          * 用来表示无限速率，允许所有事件（即使 [burst] 为0）
          * @see limit
          */
-        const val inf: Limit = Double.MAX_VALUE
+        const val inf: Double = Double.MAX_VALUE
 
         val infDuration: Duration = Duration.INFINITE
 
@@ -248,7 +245,7 @@ class RateLimiter(
          * @param tokens 令牌数量
          * @return 以该速率累积 `tokens` 个令牌所需的持续时间
          */
-        private fun Limit.durationFromTokens(tokens: Double): Duration {
+        private fun Double.durationFromTokens(tokens: Double): Duration {
             if (this <= 0) return infDuration
             val seconds = tokens / this
             return seconds.seconds
@@ -258,7 +255,7 @@ class RateLimiter(
          * @param d 时间
          * @return 以该速率经过`d`时间累积的令牌数
          */
-        private fun Limit.tokensFromDuration(d: Duration): Double {
+        private fun Double.tokensFromDuration(d: Duration): Double {
             if (this <= 0) return 0.0
             return d.toDouble(DurationUnit.SECONDS) * this
         }
@@ -271,6 +268,6 @@ class RateLimiter(
  * @return 每秒多少个令牌
  */
 @ExperimentalTime
-fun every(interval: Duration): Limit =
+fun every(interval: Duration): Double =
     if (!interval.isPositive()) RateLimiter.inf
     else 1.0 / interval.toDouble(DurationUnit.SECONDS)
