@@ -1,8 +1,15 @@
 package net.cutereimu.kotlinx.coroutines
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.sync.Semaphore
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * [java.util.concurrent.CountDownLatch] 的协程支持版。
+ *
+ * 但由于有 [Job.join] 以及 [joinAll][Collection.joinAll] 的存在，一般很少会用到这个。
+ */
 class CountDownLatch(count: Int = 0) {
     private val state = AtomicLong(count.toLong() shl 32)
     private val sema =

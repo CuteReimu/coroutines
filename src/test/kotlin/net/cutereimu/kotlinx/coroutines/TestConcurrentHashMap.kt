@@ -1,6 +1,8 @@
 package net.cutereimu.kotlinx.coroutines
 
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert
@@ -17,32 +19,28 @@ class TestConcurrentHashMap {
             (1L..mapSize).forEach { n -> m.put(n, n) }
 
             val done = Channel<Boolean>()
-            val cd = CountDownLatch()
+            var jobs = emptyList<Job>()
             try {
-                (Runtime.getRuntime().availableProcessors() downTo 1).forEach { g ->
+                jobs = (Runtime.getRuntime().availableProcessors() downTo 1).map { g ->
                     val r = Random(g)
-                    cd.countDown(-1)
                     launch {
-                        try {
-                            var i = 0L
-                            while (true) {
-                                if (done.tryReceive().isClosed) return@launch
-                                (1 until mapSize).forEach { n ->
-                                    if (r.nextLong(mapSize) == 0L)
-                                        m.put(n, n * i * g)
-                                    else
-                                        m.get(n)
-                                }
-                                i++
+                        var i = 0L
+                        while (true) {
+                            if (done.tryReceive().isClosed) return@launch
+                            (1 until mapSize).forEach { n ->
+                                if (r.nextLong(mapSize) == 0L)
+                                    m.put(n, n * i * g)
+                                else
+                                    m.get(n)
                             }
-                        } finally {
-                            cd.countDown()
+                            i++
                         }
                     }
                 }
 
-                (1 shl 10 downTo 1).forEach { _ ->
+                repeat(1 shl 10) {
                     val seen = HashMap<Long, Boolean>(mapSize.toInt())
+                    val seen2 = HashMap<Long, Boolean>(mapSize.toInt())
 
                     m.forEach { (k, v) ->
                         Assert.assertEquals(0L, v % k)
@@ -50,11 +48,18 @@ class TestConcurrentHashMap {
                         seen[k] = true
                     }
 
+                    for ((k, v) in m.snapshot()) {
+                        Assert.assertEquals(0L, v % k)
+                        Assert.assertFalse(seen2.containsKey(k))
+                        seen2[k] = true
+                    }
+
                     Assert.assertEquals(mapSize.toInt(), seen.size)
+                    Assert.assertEquals(mapSize.toInt(), seen2.size)
                 }
             } finally {
                 done.close()
-                cd.await()
+                jobs.joinAll()
             }
         }
     }

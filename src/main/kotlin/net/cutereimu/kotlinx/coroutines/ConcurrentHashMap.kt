@@ -4,6 +4,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * [java.util.concurrent.ConcurrentMap] 的协程支持版
+ */
 class ConcurrentHashMap<K : Any, V : Any> {
     private val mu = Mutex()
     private val read = AtomicReference<ReadOnly<K>>()
@@ -112,7 +115,6 @@ class ConcurrentHashMap<K : Any, V : Any> {
         }
     }
 
-
     suspend fun containsKey(key: K): Boolean = get(key) != null
 
     @Suppress("UNCHECKED_CAST")
@@ -129,13 +131,64 @@ class ConcurrentHashMap<K : Any, V : Any> {
                 }
             }
         }
-
         for ((k, e) in read.m) {
             val v = e.get() as V? ?: continue
             action(object : Map.Entry<K, V> {
                 override val key: K = k
                 override val value: V = v
             })
+        }
+    }
+
+    suspend fun snapshot(): Map<K, V> {
+        var read = readOnly
+        if (read.amended) {
+            mu.withLock {
+                read = readOnly
+                if (read.amended) {
+                    read = ReadOnly(m = dirty!!)
+                    this.read.set(read)
+                    dirty = null
+                    misses = 0
+                }
+            }
+        }
+        return ReadOnlyMap(read)
+    }
+
+    private class ReadOnlyMap<K, V>(private val read: ReadOnly<K>) : AbstractMap<K, V>() {
+        override val entries: Set<Map.Entry<K, V>>
+            get() = object : AbstractSet<Map.Entry<K, V>>() {
+                override val size: Int
+                    get() = read.m.size
+
+                override fun iterator(): Iterator<Map.Entry<K, V>> = It(read.m.iterator())
+            }
+
+        class It<K, V> internal constructor(private val it: Iterator<Map.Entry<K, Entry>>) : Iterator<Map.Entry<K, V>> {
+            private var next: Map.Entry<K, Entry>? = null
+
+            override fun hasNext(): Boolean {
+                if (next?.value?.get() != null)
+                    return true
+                while (it.hasNext()) {
+                    val next = it.next()
+                    if (next.value.get() != null) {
+                        this.next = next
+                        return true
+                    }
+                }
+                return false
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            override fun next(): Map.Entry<K, V> = next!!.let {
+                next = null
+                object : Map.Entry<K, V> {
+                    override val key: K = it.key
+                    override val value: V = it.value.get() as V
+                }
+            }
         }
     }
 
@@ -165,12 +218,8 @@ class ConcurrentHashMap<K : Any, V : Any> {
         val amended: Boolean = false
     )
 
-    private class Entry(i: Any) {
-        val p = AtomicReference<Any>()
-
-        init {
-            p.set(i)
-        }
+    internal class Entry(i: Any) {
+        private val p = AtomicReference(i)
 
         fun get(): Any? = p.get()
 
