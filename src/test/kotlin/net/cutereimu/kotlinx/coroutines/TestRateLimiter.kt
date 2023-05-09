@@ -1,12 +1,12 @@
 package net.cutereimu.kotlinx.coroutines
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import net.cutereimu.kotlinx.coroutines.RateLimiter.Reservation
 import org.junit.Assert
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.*
@@ -370,11 +370,23 @@ class TestRateLimiter {
         return gotD <= maxD
     }
 
+    private suspend fun newFailedContext(scope: CoroutineScope): CoroutineContext {
+        var context: CoroutineContext? = null
+        val ch = Channel<Boolean>(1)
+        val job = scope.launch {
+            context = this.coroutineContext
+            ch.send(true)
+        }
+        ch.receive()
+        job.cancelAndJoin()
+        return context!!
+    }
+
     @Test
     fun testWaitSimple() {
         runBlocking {
             val limiter = RateLimiter(10.0, 3)
-            runWait(limiter, Wait("not-active", EmptyCoroutineContext, 1, 0, false))
+            runWait(limiter, Wait("not-active", newFailedContext(this), 1, 0, false))
             runWait(limiter, Wait("exceed-burst-error", coroutineContext, 4, 0, false))
             runWait(limiter, Wait("act-now", coroutineContext, 2, 0, true))
             runWait(limiter, Wait("act-later", coroutineContext, 3, 2, true))
