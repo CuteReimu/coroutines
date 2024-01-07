@@ -151,7 +151,7 @@ class TestRateLimiter {
             while (TimeSource.Monotonic.markNow() < end) {
                 if (limiter.allow())
                     numOK++
-                delay(2.milliseconds)
+                Thread.sleep(2)
             }
             val elapsed = start.elapsedNow()
             val ideal = burst + (elapsed * limit).toInt(DurationUnit.SECONDS)
