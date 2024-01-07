@@ -1,10 +1,7 @@
 package net.cutereimu.kotlinx.coroutines
 
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert
 import org.junit.Test
 import kotlin.random.Random
@@ -24,38 +21,42 @@ class TestConcurrentHashMap {
                 jobs = (Runtime.getRuntime().availableProcessors() downTo 1).map { g ->
                     val r = Random(g)
                     launch {
-                        var i = 0L
-                        while (true) {
-                            if (done.tryReceive().isClosed) return@launch
-                            (1 until mapSize).forEach { n ->
-                                if (r.nextLong(mapSize) == 0L)
-                                    m.put(n, n * i * g)
-                                else
-                                    m.get(n)
+                        withContext(Dispatchers.IO) {
+                            var i = 0L
+                            while (true) {
+                                if (done.tryReceive().isClosed) return@withContext
+                                (1 until mapSize).forEach { n ->
+                                    if (r.nextLong(mapSize) == 0L)
+                                        m.put(n, n * i * g)
+                                    else
+                                        m.get(n)
+                                }
+                                i++
                             }
-                            i++
                         }
                     }
                 }
 
-                repeat(1 shl 10) {
-                    val seen = HashMap<Long, Boolean>(mapSize.toInt())
-                    val seen2 = HashMap<Long, Boolean>(mapSize.toInt())
+                withContext(Dispatchers.IO) {
+                    repeat(1 shl 10) {
+                        val seen = HashMap<Long, Boolean>(mapSize.toInt())
+                        val seen2 = HashMap<Long, Boolean>(mapSize.toInt())
 
-                    m.forEach { (k, v) ->
-                        Assert.assertEquals(0L, v % k)
-                        Assert.assertFalse(seen.containsKey(k))
-                        seen[k] = true
+                        m.forEach { (k, v) ->
+                            Assert.assertEquals(0L, v % k)
+                            Assert.assertFalse(seen.containsKey(k))
+                            seen[k] = true
+                        }
+
+                        for ((k, v) in m.snapshot()) {
+                            Assert.assertEquals(0L, v % k)
+                            Assert.assertFalse(seen2.containsKey(k))
+                            seen2[k] = true
+                        }
+
+                        Assert.assertEquals(mapSize.toInt(), seen.size)
+                        Assert.assertEquals(mapSize.toInt(), seen2.size)
                     }
-
-                    for ((k, v) in m.snapshot()) {
-                        Assert.assertEquals(0L, v % k)
-                        Assert.assertFalse(seen2.containsKey(k))
-                        seen2[k] = true
-                    }
-
-                    Assert.assertEquals(mapSize.toInt(), seen.size)
-                    Assert.assertEquals(mapSize.toInt(), seen2.size)
                 }
             } finally {
                 done.close()
